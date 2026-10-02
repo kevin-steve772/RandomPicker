@@ -1,20 +1,36 @@
 # AGENTS.md
 
 ClassIsland 插件「随机抽选」：单项目 C# / .NET 8 / Avalonia，没有 solution、测试、lint、CI 或 pre-commit。
-唯一能验证改动的手段是编译。
+改动靠编译验证，纯逻辑另有一条轻量冒烟测试路径（见下）。
 
 ## 构建
 
-- `dotnet build -c Release`
-- **本仓库不能独立编译。** csproj 里 `ProjectReference` 指向 `..\..\ClassIsland.Core\ClassIsland.Core.csproj`，
-  必须把仓库克隆到 ClassIsland 源码树的 `plugins/` 下（README 也这么写）。
-  独立检出直接编译会报约 36 个 CS0246/CS0234（缺 `ClassIsland.Core`、`ClassIsland.Shared`、
-  `Microsoft.Extensions.*`、`Windows.*` 等）。这是预期行为，不是代码坏了 ——
-  不要为了「让编译过」改 using 或删功能。
-- 还需要 `microsoft.windows.sdk.net.ref` 10.0.19041.57 在 NuGet 缓存里：csproj 用
-  `HintPath` 硬路径引用 `Microsoft.Windows.SDK.NET` / `WinRT.Runtime`，**不是** PackageReference，
-  本仓库的 restore 不会去拉它（得靠宿主树那边的 restore 先放进缓存）。
-- 没有测试套件。改动后只能靠编译 + 人工验证。
+- `dotnet build -c Release`（在本目录跑，会连带编 `ClassIsland.Core` 等宿主工程）
+- **本仓库不能独立编译。** csproj 的 `ProjectReference` 是 `..\..\ClassIsland.Core\...`，
+  必须位于 ClassIsland 源码树的 `plugins/<名>/` 下。独立检出直接编会报约 36 个
+  CS0246/CS0234（缺 `ClassIsland.Core`、`ClassIsland.Shared`、`Microsoft.Extensions.*`、
+  `Windows.*` 等）—— 预期行为，别为了「让编译过」改 using 或删功能。
+- **当前布局**：真实仓库在 `~/Documents/coding/ClassIsland/plugins/RandomPicker`，
+  `~/Documents/coding/RandomPicker` 是指向它的符号链接。
+  编译必须走真实路径：dotnet/MSBuild 会解析符号链接，从链接路径编译时
+  `..\..\ClassIsland.Core` 会解析到错误位置（MSB3202 找不到项目文件）。
+- **宿主树首次可用需要三步**（都是一次性的，克隆在 `~/Documents/coding/ClassIsland`，depth 1）：
+  1. 子模块：`.gitmodules` 用的是 git@ SSH 地址，无 key 会失败 →
+     `git config submodule.vendors/EdgeTtsSharp.url https://github.com/ClassIsland/EdgeTtsSharp.git`
+     后再 `git submodule update --init`。
+  2. 本地 tag：`git tag 2.1.0.0`。宿主的 `SimpleGitInfoGenerator` 跑 `git describe`，
+     浅克隆没有 tag 会得到 CS7034（版本串变成 `fatal: 没有发现名称...`）。
+  3. WinRT 引用：csproj 用 `HintPath` 硬指
+     `$(NuGetPackageRoot)microsoft.windows.sdk.net.ref\10.0.19041.57\...`，
+     **不是** PackageReference，本仓库的 restore 拉不到它；缺了报 10 个
+     CS0234/CS0246（`Windows.*`）。补法：临时工程加
+     `<PackageReference Include="microsoft.windows.sdk.net.ref" Version="10.0.19041.57" />`
+     跑一次 `dotnet restore` —— 会报 NU1213（DotnetPlatform 包类型不兼容），
+     **但包已经下进缓存，HintPath 就能命中**。
+- 冒烟测试：没有测试套件，但纯逻辑（名单/小组解析、抽选规则）可以写个临时 console
+  工程直接引用 `bin/Release/net8.0/ClassIsland.RandomPicker.dll` 跑断言 ——
+  只碰 `RosterService` / `GroupService` / `PickerSettings` 这些 BCL 类型时，
+  不需要宿主、不需要 Avalonia。
 
 ## 打包引用规则（最容易改错的地方）
 
@@ -38,12 +54,18 @@ csproj 注释是硬结论的来源，动 `Reference`/打包之前先读。
 ## 版本号
 
 `ClassIsland.RandomPicker.csproj` 的 `<Version>` 和 `manifest.yml` 的 `version` 必须一致
-（当前 1.1.0.0）；`manifest.yml` 的 `apiVersion` 是宿主 API 级别，非必要不改。
+（当前 1.2.0.0）；`manifest.yml` 的 `apiVersion` 是宿主 API 级别，非必要不改。
 
 ## 运行时布局
 
-- 设置与名单在宿主给的 `PluginConfigFolder` 下：`settings.json`、`名单.txt`、
-  可选 `名单-文字.txt`，存原图时还有照片。名单是纯文本、`FileSystemWatcher` 热加载。
+- 设置与名单在宿主给的 `PluginConfigFolder` 下：`settings.json`、`名单.txt`、`小组.txt`、
+  可选 `名单-文字.txt`，存原图时还有照片。全部纯文本、`FileSystemWatcher` 热加载。
+- **抽选对象分个人和小组。** 小组成员来自名单行尾的 id（`张三 G1`，最后一段是 id，
+  无 id 行为完全不变），组名来自 `小组.txt`（`G1 第一组`，第一段是 id）；
+  合并规则、空组排除等见 `GroupService` 头注释。个人/小组的「本轮已抽」在
+  `PickerSettings` 里是**两套字段**（`DrawnThisRound` / `DrawnGroupsThisRound`），别混用。
+- 交互：**左键**点悬浮球弹「抽个人 / 抽小组」小菜单（`PickerWindow.ShowPickMenu`，
+  点完才抽，不再一步直抽）；右键或触摸长按是设置菜单；拖动照旧。
 - 入口 `RandomPickerPlugin` → 注册 `PickerHostService`（IHostedService，悬浮窗与抽选主流程）、
   `PickerNotificationProvider`、`PickerSettingsPage`。
 - 拍照抽人走 WinRT `MediaCapture`/`MediaFrameReader`（Windows 专属），失败时静默退回按名单抽；
@@ -59,4 +81,5 @@ csproj 注释是硬结论的来源，动 `Reference`/打包之前先读。
 
 ## 参考
 
-- `README.md`：用户视角的完整行为说明（三种模式、阈值实测数据、置顶实现），与代码冲突时以代码为准。
+- `README.md`：用户视角的完整行为说明（三种模式、小组、阈值实测数据、置顶实现），与代码冲突时以代码为准。
+- `~/Documents/coding/ClassIsland/AGENTS.md`：宿主仓库的构建命令与约束，宿主侧问题以它为准。
