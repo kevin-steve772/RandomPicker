@@ -6,6 +6,10 @@ ClassIsland 插件「随机抽选」：单项目 C# / .NET 8 / Avalonia，没有
 ## 构建
 
 - `dotnet build -c Release`（在本目录跑，会连带编 `ClassIsland.Core` 等宿主工程）
+- **每次编译顺带出安装包**：`cipx/ClassIsland.RandomPicker.cipx`
+  （csproj 里的 `CreateCipx` target，随 Build 跑；`cipx/` 已进 .gitignore）。
+  宿主安装就是解压 zip、读**根部**的 `manifest.yml`（`PluginService`），
+  不校验任何 hash，所以包内容对不对全靠这个 target 的白名单把关。
 - **本仓库不能独立编译。** csproj 的 `ProjectReference` 是 `..\..\ClassIsland.Core\...`，
   必须位于 ClassIsland 源码树的 `plugins/<名>/` 下。独立检出直接编会报约 36 个
   CS0246/CS0234（缺 `ClassIsland.Core`、`ClassIsland.Shared`、`Microsoft.Extensions.*`、
@@ -41,8 +45,12 @@ csproj 注释是硬结论的来源，动 `Reference`/打包之前先读。
   PackageReference，靠打包清单把它排除），**绝不能进插件包**。
   宿主 `PluginLoadContext` 有 WinRT 白名单，会强制解析到宿主那份。
 - **插件自带的**（ONNX Runtime）：`Private="true"`，dll + 原生库 + 模型平铺到输出根目录，
-  且必须在 `pack-include.txt` 里列一行 —— 那份清单决定哪些文件进 `.cipx`。
+  且必须在 `pack-include.txt` 里列一行 —— `CreateCipx` target 读那份清单决定哪些文件进 `.cipx`；
+  **列了却不在输出目录会直接报打包错误**（引用 / 复制 / 清单三处同步漏一处就断）。
   新增任何随包依赖 = csproj 引用 + `None Include CopyToOutputDirectory` + `pack-include.txt` 三处同步。
+- 打包用的是 csproj 里自写的 `CreateCipx`，**不是**官方 `ClassIsland.PluginSdk` 的同名 target：
+  官方那个压整个输出目录（会把宿主的 `ClassIsland.Shared.dll` 等一起打包，且强依赖 pwsh），
+  原因写在 csproj 注释里，别「改回官方做法」。
 - `GenerateDependencyFile=false`（不生成 deps.json）是刻意的：生成了宿主的
   `AssemblyDependencyResolver` 会把本该用宿主那份的 Avalonia 一起拖下水。
   代价是没有 deps.json，程序集/原生库要手动挂解析回调：

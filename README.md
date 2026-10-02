@@ -126,3 +126,6 @@
 - 仓库：<https://github.com/Gordonynh/RandomPicker>　·　MIT 协议
 - 针对 ClassIsland 2.1（Avalonia）构建；随 release 提供打包好的 `.cipx`
 - 从源码编译：克隆到 ClassIsland 源码树的 `plugins/` 目录下，`dotnet build -c Release`
+- 编译时会顺带生成插件包 `cipx/ClassIsland.RandomPicker.cipx`：
+  **把它拖进 ClassIsland 窗口**（设置 → 插件 也支持）即可安装；
+  也可以直接丢到数据目录的 `plugins/` 文件夹里重启生效
