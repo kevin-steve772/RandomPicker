@@ -296,6 +296,17 @@ public sealed class GroupService : IDisposable
         return pool.Count > 0 ? pool : [.._groups];
     }
 
+    public PickerGroup? PeekRandom(PickerSettings settings)
+    {
+        if (_groups.Count == 0)
+        {
+            return null;
+        }
+
+        var candidates = BuildCandidates(settings);
+        return candidates.Count > 0 ? candidates[RandomNumberGenerator.GetInt32(candidates.Count)] : null;
+    }
+
     /// <summary>「不重复」模式下手动开始新一轮。</summary>
     public static void ResetRound(PickerSettings settings)
     {

@@ -34,6 +34,10 @@ public class PickerHostService : IHostedService
     /// <summary>上一条还在播的提醒。连着抽人时先把它取消掉，免得在主界面上排队堆积。</summary>
     private NotificationRequest? _lastRequest;
 
+    private bool _isFlashing;
+    private DispatcherTimer? _flashTimer;
+    private int _flashCount;
+
     public PickerHostService(string pluginConfigFolder)
     {
         _configFolder = pluginConfigFolder;
@@ -235,14 +239,30 @@ public class PickerHostService : IHostedService
             return;
         }
 
-        if (_settings.ShowCenterReveal)
+        if (_settings.ShowCenterReveal && !_isFlashing)
         {
-            Reveal(name, isHint: false, note);
+            StartFlash(
+                () => TextRoster.PeekRandom(_settings) ?? name,
+                () =>
+                {
+                    Reveal(name, isHint: false, note);
+                    if (_settings.ShowNotification)
+                    {
+                        SendNotification(name);
+                    }
+                });
         }
-
-        if (_settings.ShowNotification)
+        else
         {
-            SendNotification(name);
+            if (_settings.ShowCenterReveal)
+            {
+                Reveal(name, isHint: false, note);
+            }
+
+            if (_settings.ShowNotification)
+            {
+                SendNotification(name);
+            }
         }
     }
 
@@ -271,14 +291,30 @@ public class PickerHostService : IHostedService
             return;
         }
 
-        if (_settings.ShowCenterReveal)
+        if (_settings.ShowCenterReveal && !_isFlashing)
         {
-            Reveal(group.Name, isHint: false, string.Join("、", group.Members));
+            StartFlash(
+                () => _groups!.PeekRandom(_settings)?.Name ?? group.Name,
+                () =>
+                {
+                    Reveal(group.Name, isHint: false, string.Join(" ", group.Members));
+                    if (_settings.ShowNotification)
+                    {
+                        SendNotification(group.Name);
+                    }
+                });
         }
-
-        if (_settings.ShowNotification)
+        else
         {
-            SendNotification(group.Name);
+            if (_settings.ShowCenterReveal)
+            {
+                Reveal(group.Name, isHint: false, string.Join(" ", group.Members));
+            }
+
+            if (_settings.ShowNotification)
+            {
+                SendNotification(group.Name);
+            }
         }
     }
 
@@ -295,6 +331,26 @@ public class PickerHostService : IHostedService
 
     private static readonly Avalonia.Media.Color DefaultAccent =
         Avalonia.Media.Color.FromRgb(0x5B, 0x8D, 0xEF);
+
+    private void StartFlash(Func<string> pickFlash, Action finalize)
+    {
+        _isFlashing = true;
+        _flashCount = 0;
+        _flashTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _flashTimer.Tick += (_, _) =>
+        {
+            _flashCount++;
+            if (_flashCount >= 10)
+            {
+                _flashTimer.Stop();
+                _isFlashing = false;
+                finalize();
+                return;
+            }
+            RevealWindow.Flash(pickFlash(), _window?.Accent ?? DefaultAccent);
+        };
+        _flashTimer.Start();
+    }
 
     private void SendNotification(string name)
     {

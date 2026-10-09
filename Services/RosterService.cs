@@ -222,6 +222,17 @@ public class RosterService
         return pool.Count > 0 ? pool : [.._names];
     }
 
+    public string? PeekRandom(PickerSettings settings)
+    {
+        if (_names.Count == 0)
+        {
+            return null;
+        }
+
+        var candidates = BuildCandidates(settings);
+        return candidates.Count > 0 ? candidates[RandomNumberGenerator.GetInt32(candidates.Count)] : null;
+    }
+
     /// <summary>「不重复」模式下手动开始新一轮。</summary>
     public static void ResetRound(PickerSettings settings)
     {
